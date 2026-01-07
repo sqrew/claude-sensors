@@ -37,18 +37,7 @@ anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Sensor crates (from workspace)
-rmcp-display = { path = "crates/rmcp-display" }
-rmcp-idle = { path = "crates/rmcp-idle" }
-rmcp-network = { path = "crates/rmcp-network" }
-rmcp-usb = { path = "crates/rmcp-usb" }
-rmcp-battery = { path = "crates/rmcp-battery" }
-rmcp-bluetooth = { path = "crates/rmcp-bluetooth" }
-rmcp-git = { path = "crates/rmcp-git" }
-rmcp-sysinfo = { path = "crates/rmcp-sysinfo" }
-rmcp-weather = { path = "crates/rmcp-weather" }
-
-# Direct sensor dependencies (for unified implementation)
+# Sensor dependencies (unified implementation)
 display-info = "0.5.7"
 user-idle = "0.6"
 network-interface = "2"

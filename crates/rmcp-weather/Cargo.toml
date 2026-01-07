@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "MCP server for weather information"
 license = "MIT"
-repository = "https://github.com/sqrew/rmcp-weather"
+repository = "https://github.com/sqrew/claude-sensors"
 
 [[bin]]
 name = "rmcp-weather"
@@ -26,8 +26,3 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 urlencoding = "2.1"
 
-[profile.release]
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true

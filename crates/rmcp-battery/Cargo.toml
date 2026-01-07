@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Cross-platform MCP server for battery/power information"
 license = "MIT"
-repository = "https://github.com/sqrew/rmcp-battery"
+repository = "https://github.com/sqrew/claude-sensors"
 
 [[bin]]
 name = "rmcp-battery"
@@ -24,8 +24,3 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 battery = "0.7"
 
-[profile.release]
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true
