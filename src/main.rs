@@ -19,7 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
-use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
+use sysinfo::{Components, CpuRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System, Users};
 use user_idle::UserIdle;
 
 // ============================================================================
@@ -1140,6 +1140,82 @@ impl SensorsServer {
         }
 
         output.push_str(&format!("\nTotal processes: {}\n", processes.len()));
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[rmcp::tool(description = "Get network interface I/O statistics (bytes sent/received)")]
+    pub async fn get_network_stats(&self) -> Result<CallToolResult, McpError> {
+        let networks = Networks::new_with_refreshed_list();
+
+        let mut output = String::from("Network Interface Statistics:\n\n");
+
+        if networks.iter().count() == 0 {
+            output.push_str("No network interfaces found.\n");
+        } else {
+            for (name, data) in networks.iter() {
+                output.push_str(&format!("{}:\n", name));
+                output.push_str(&format!("  Received: {}\n", Self::format_bytes(data.total_received())));
+                output.push_str(&format!("  Transmitted: {}\n", Self::format_bytes(data.total_transmitted())));
+                output.push_str(&format!("  Packets In: {}\n", data.total_packets_received()));
+                output.push_str(&format!("  Packets Out: {}\n", data.total_packets_transmitted()));
+                output.push_str(&format!("  Errors In: {}\n", data.total_errors_on_received()));
+                output.push_str(&format!("  Errors Out: {}\n", data.total_errors_on_transmitted()));
+                output.push('\n');
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[rmcp::tool(description = "Get component temperatures (CPU, GPU, etc.)")]
+    pub async fn get_component_temps(&self) -> Result<CallToolResult, McpError> {
+        let components = Components::new_with_refreshed_list();
+
+        let mut output = String::from("Component Temperatures:\n\n");
+
+        if components.iter().count() == 0 {
+            output.push_str("No temperature sensors found.\n");
+        } else {
+            for component in components.iter() {
+                if let Some(temp) = component.temperature() {
+                    output.push_str(&format!("{}: {:.1}°C", component.label(), temp));
+                    if let Some(max) = component.max() {
+                        output.push_str(&format!(" (max: {:.1}°C)", max));
+                    }
+                    if let Some(critical) = component.critical() {
+                        output.push_str(&format!(" (critical: {:.1}°C)", critical));
+                    }
+                    output.push('\n');
+                }
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+
+    #[rmcp::tool(description = "Get logged in users")]
+    pub async fn get_users(&self) -> Result<CallToolResult, McpError> {
+        let users = Users::new_with_refreshed_list();
+
+        let mut output = String::from("System Users:\n\n");
+
+        if users.iter().count() == 0 {
+            output.push_str("No users found.\n");
+        } else {
+            for user in users.iter() {
+                output.push_str(&format!("{}\n", user.name()));
+                output.push_str(&format!("  UID: {:?}\n", user.id()));
+                output.push_str(&format!("  GID: {:?}\n", user.group_id()));
+                let groups = user.groups();
+                if !groups.is_empty() {
+                    let group_names: Vec<_> = groups.iter().map(|g| g.name().to_string()).collect();
+                    output.push_str(&format!("  Groups: {}\n", group_names.join(", ")));
+                }
+                output.push('\n');
+            }
+            output.push_str(&format!("Total users: {}\n", users.iter().count()));
+        }
 
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }
