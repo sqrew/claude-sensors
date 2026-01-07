@@ -1052,7 +1052,9 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("claude-sensors starting...");
 
-    server.serve(transport).await?;
+    let service = server.serve(transport).await?;
+    service.waiting().await?;
 
+    tracing::info!("claude-sensors stopped");
     Ok(())
 }
