@@ -14,7 +14,7 @@ members = [
 
 [package]
 name = "claude-sensors"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Cross-platform environmental awareness for AI assistants - a suite of MCP servers"
 license = "MIT"
@@ -45,10 +45,10 @@ nusb = "0.1"
 battery = "0.7"
 btleplug = "0.11"
 git2 = "0.20"
-sysinfo = "0.32"
+sysinfo = "0.35"
 reqwest = { version = "0.12", features = ["json"] }
 chrono = "0.4"
-urlencoding = "2"
+urlencoding = "2.1"
 
 [profile.release]
 lto = true
