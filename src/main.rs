@@ -5,7 +5,7 @@
 use btleplug::api::{Central, Manager as BtManager, Peripheral as _, ScanFilter};
 use btleplug::platform::Manager as BluetoothManager;
 use display_info::DisplayInfo;
-use git2::{Repository, StatusOptions};
+use git2::{BranchType, Repository, StatusOptions};
 use network_interface::{Addr, NetworkInterface, NetworkInterfaceConfig};
 use nusb::list_devices;
 use rmcp::{
@@ -844,6 +844,223 @@ impl SensorsServer {
         if count == 0 {
             result.push_str("No commits found.\n");
         }
+
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+
+    #[rmcp::tool(description = "Get current branch name")]
+    pub async fn get_current_branch(
+        &self,
+        Parameters(params): Parameters<RepoPathParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let repo = Self::get_repo(params.path)?;
+
+        let head = repo.head()
+            .map_err(|e| McpError::internal_error(format!("No HEAD: {}", e), None))?;
+
+        let branch_name = head.shorthand().unwrap_or("(detached)");
+        let is_detached = repo.head_detached().unwrap_or(false);
+
+        let result = if is_detached {
+            format!("Current branch: {} (detached HEAD)", branch_name)
+        } else {
+            format!("Current branch: {}", branch_name)
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+
+    #[rmcp::tool(description = "List all branches (local and remote)")]
+    pub async fn get_branches(
+        &self,
+        Parameters(params): Parameters<RepoPathParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let repo = Self::get_repo(params.path)?;
+        let mut result = String::from("Branches:\n\n");
+
+        let current = repo.head().ok().and_then(|h| h.shorthand().map(String::from));
+
+        result.push_str("Local:\n");
+        let local_branches = repo.branches(Some(BranchType::Local))
+            .map_err(|e| McpError::internal_error(format!("Failed to list branches: {}", e), None))?;
+
+        let mut local_count = 0;
+        for branch in local_branches {
+            if let Ok((branch, _)) = branch {
+                if let Ok(Some(name)) = branch.name() {
+                    local_count += 1;
+                    let marker = if Some(name.to_string()) == current { "* " } else { "  " };
+                    result.push_str(&format!("{}{}\n", marker, name));
+                }
+            }
+        }
+        if local_count == 0 {
+            result.push_str("  (none)\n");
+        }
+
+        result.push_str("\nRemote:\n");
+        let remote_branches = repo.branches(Some(BranchType::Remote))
+            .map_err(|e| McpError::internal_error(format!("Failed to list remote branches: {}", e), None))?;
+
+        let mut remote_count = 0;
+        for branch in remote_branches {
+            if let Ok((branch, _)) = branch {
+                if let Ok(Some(name)) = branch.name() {
+                    remote_count += 1;
+                    result.push_str(&format!("  {}\n", name));
+                }
+            }
+        }
+        if remote_count == 0 {
+            result.push_str("  (none)\n");
+        }
+
+        result.push_str(&format!("\nTotal: {} local, {} remote\n", local_count, remote_count));
+
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+
+    #[rmcp::tool(description = "List all remotes with their URLs")]
+    pub async fn get_remotes(
+        &self,
+        Parameters(params): Parameters<RepoPathParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let repo = Self::get_repo(params.path)?;
+        let mut result = String::from("Remotes:\n\n");
+
+        let remotes = repo.remotes()
+            .map_err(|e| McpError::internal_error(format!("Failed to list remotes: {}", e), None))?;
+
+        if remotes.is_empty() {
+            result.push_str("No remotes configured.\n");
+        } else {
+            for name in remotes.iter().flatten() {
+                result.push_str(&format!("{}:\n", name));
+                if let Ok(remote) = repo.find_remote(name) {
+                    if let Some(url) = remote.url() {
+                        result.push_str(&format!("  Fetch: {}\n", url));
+                    }
+                    if let Some(url) = remote.pushurl().or(remote.url()) {
+                        result.push_str(&format!("  Push:  {}\n", url));
+                    }
+                }
+                result.push('\n');
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+
+    #[rmcp::tool(description = "List all tags")]
+    pub async fn get_tags(
+        &self,
+        Parameters(params): Parameters<RepoPathParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let repo = Self::get_repo(params.path)?;
+        let mut result = String::from("Tags:\n\n");
+
+        let tags = repo.tag_names(None)
+            .map_err(|e| McpError::internal_error(format!("Failed to list tags: {}", e), None))?;
+
+        if tags.is_empty() {
+            result.push_str("No tags found.\n");
+        } else {
+            for tag in tags.iter().flatten() {
+                result.push_str(&format!("  {}\n", tag));
+            }
+            result.push_str(&format!("\nTotal: {} tags\n", tags.len()));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+
+    #[rmcp::tool(description = "List stashed changes")]
+    pub async fn get_stash_list(
+        &self,
+        Parameters(params): Parameters<RepoPathParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut repo = Self::get_repo(params.path)?;
+        let mut result = String::from("Stash List:\n\n");
+
+        let mut stashes = Vec::new();
+        repo.stash_foreach(|index, message, _oid| {
+            stashes.push((index, message.to_string()));
+            true
+        }).map_err(|e| McpError::internal_error(format!("Failed to list stashes: {}", e), None))?;
+
+        if stashes.is_empty() {
+            result.push_str("No stashed changes.\n");
+        } else {
+            for (index, message) in &stashes {
+                result.push_str(&format!("stash@{{{}}}: {}\n", index, message));
+            }
+            result.push_str(&format!("\nTotal: {} stash entries\n", stashes.len()));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+
+    #[rmcp::tool(description = "Get summary of uncommitted changes (file counts)")]
+    pub async fn get_diff_summary(
+        &self,
+        Parameters(params): Parameters<RepoPathParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let repo = Self::get_repo(params.path)?;
+        let mut result = String::from("Diff Summary:\n\n");
+
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true);
+
+        let statuses = repo.statuses(Some(&mut opts))
+            .map_err(|e| McpError::internal_error(format!("Failed to get status: {}", e), None))?;
+
+        let mut staged_new = 0;
+        let mut staged_modified = 0;
+        let mut staged_deleted = 0;
+        let mut unstaged_modified = 0;
+        let mut unstaged_deleted = 0;
+        let mut untracked = 0;
+
+        for entry in statuses.iter() {
+            let status = entry.status();
+
+            if status.is_index_new() { staged_new += 1; }
+            if status.is_index_modified() { staged_modified += 1; }
+            if status.is_index_deleted() { staged_deleted += 1; }
+            if status.is_wt_modified() { unstaged_modified += 1; }
+            if status.is_wt_deleted() { unstaged_deleted += 1; }
+            if status.is_wt_new() { untracked += 1; }
+        }
+
+        let staged_total = staged_new + staged_modified + staged_deleted;
+        let unstaged_total = unstaged_modified + unstaged_deleted;
+
+        result.push_str("Staged for commit:\n");
+        if staged_total == 0 {
+            result.push_str("  (none)\n");
+        } else {
+            if staged_new > 0 { result.push_str(&format!("  {} new file(s)\n", staged_new)); }
+            if staged_modified > 0 { result.push_str(&format!("  {} modified\n", staged_modified)); }
+            if staged_deleted > 0 { result.push_str(&format!("  {} deleted\n", staged_deleted)); }
+        }
+
+        result.push_str("\nNot staged:\n");
+        if unstaged_total == 0 {
+            result.push_str("  (none)\n");
+        } else {
+            if unstaged_modified > 0 { result.push_str(&format!("  {} modified\n", unstaged_modified)); }
+            if unstaged_deleted > 0 { result.push_str(&format!("  {} deleted\n", unstaged_deleted)); }
+        }
+
+        result.push_str("\nUntracked:\n");
+        if untracked == 0 {
+            result.push_str("  (none)\n");
+        } else {
+            result.push_str(&format!("  {} file(s)\n", untracked));
+        }
+
+        result.push_str(&format!("\nSummary: {} staged, {} unstaged, {} untracked\n",
+            staged_total, unstaged_total, untracked));
 
         Ok(CallToolResult::success(vec![Content::text(result)]))
     }
