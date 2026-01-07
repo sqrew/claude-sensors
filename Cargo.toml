@@ -14,7 +14,7 @@ members = [
 
 [package]
 name = "claude-sensors"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Cross-platform environmental awareness for AI assistants - a suite of MCP servers"
 license = "MIT"
